@@ -1,0 +1,18 @@
+# Byte-compiled files
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+env/
+.venv/
+
+# Distribution folders
+build/
+dist/
+*.egg-info/
+
+# Model artifacts (if generated)
+models/
+
+# Notebook checkpoints
+.ipynb_checkpoints
