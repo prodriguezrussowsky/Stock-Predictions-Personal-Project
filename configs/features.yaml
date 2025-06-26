@@ -1,0 +1,166 @@
+# Feature Engineering Configuration
+
+technical_features:
+  enabled: true
+  
+  price_features:
+    - returns
+    - log_returns
+    - price_range
+    - gap
+  
+  moving_averages:
+    sma_windows: [5, 10, 20, 50]
+    ema_windows: [5, 10, 20, 50]
+    price_ratios: true  # price/sma ratios
+  
+  volatility:
+    windows: [5, 10, 20]
+    returns_based: true
+    price_based: true
+  
+  volume:
+    sma_window: 10
+    ratios: true
+  
+  momentum_indicators:
+    rsi:
+      enabled: true
+      window: 14
+    
+    macd:
+      enabled: true
+      fast: 12
+      slow: 26
+      signal: 9
+    
+    stochastic:
+      enabled: true
+      k_window: 14
+      d_window: 3
+    
+    williams_r:
+      enabled: true
+      window: 14
+  
+  trend_indicators:
+    bollinger_bands:
+      enabled: true
+      window: 20
+      std_dev: 2
+    
+    adx:
+      enabled: true
+      window: 14
+    
+    cci:
+      enabled: true
+      window: 20
+  
+  custom_indicators:
+    enabled: false
+    # Add custom technical indicators here
+
+time_features:
+  enabled: true
+  
+  datetime_components:
+    - year
+    - month
+    - day  
+    - weekday
+    - quarter
+    - day_of_year
+    - week_of_year
+  
+  cyclical_encoding:
+    enabled: true
+    features:
+      - month
+      - weekday
+  
+  market_timing:
+    - is_month_end
+    - is_month_start
+    - is_quarter_end
+    - is_year_end
+  
+  holidays:
+    enabled: false
+    # Add holiday features if needed
+
+lag_features:
+  enabled: true
+  
+  price_lags: [1, 2, 3, 5, 10]
+  returns_lags: [1, 2, 3, 5, 10]
+  
+  rolling_windows:
+    price:
+      windows: [5, 10, 20]
+      stats: [mean, std, min, max]
+    
+    returns:
+      windows: [5, 10, 20]
+      stats: [mean, std]
+    
+    volume:
+      windows: [5, 10]
+      stats: [mean, std]
+
+target_variables:
+  horizons: ["1d", "5d", "20d"]
+  
+  types:
+    - price  # future price
+    - return # future return
+    - direction # up/down classification
+    - volatility # future volatility
+  
+  thresholds:
+    small_move: 0.01  # 1%
+    medium_move: 0.02 # 2%
+    large_move: 0.05  # 5%
+
+feature_selection:
+  enabled: true
+  
+  correlation_threshold: 0.95  # Remove highly correlated features
+  
+  importance_based:
+    enabled: true
+    method: xgboost  # or mutual_info
+    top_k: 50
+  
+  statistical_tests:
+    enabled: false
+    method: f_test
+
+preprocessing:
+  missing_values:
+    strategy: forward_fill  # forward_fill, mean, median, drop
+    
+  outliers:
+    detection: iqr  # iqr, zscore, isolation_forest
+    treatment: clip  # clip, remove, transform
+    threshold: 3.0
+  
+  scaling:
+    enabled: false
+    method: standard  # standard, minmax, robust
+    
+  encoding:
+    categorical_method: onehot  # onehot, label, target
+
+validation:
+  time_series_split:
+    enabled: true
+    n_splits: 5
+    test_size: 0.2
+  
+  feature_stability:
+    enabled: true
+    window_size: 252  # 1 year of trading days
+    
+  target_leakage:
+    check_enabled: true
