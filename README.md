@@ -88,7 +88,6 @@ haven't done yet:
 - web interface
 - model deployment/serving
 
-## dev stuff
 
 ```bash
 # run linting
@@ -101,4 +100,4 @@ mypy src/
 pip install -e .
 ```
 
-this is built for local experimentation and research, not production trading (yet). use at your own risk, don't bet the farm on it.
+this is built for local experimentation and research, not production trading (yet). use at your own risk
