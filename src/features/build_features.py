@@ -12,15 +12,16 @@ logger = setup_logging()
 
 
 class FeatureBuilder:
+    # takes raw ohlcv data and turns it into features for ml models
     def __init__(self, data_dir: Optional[Path] = None):
         self.data_dir = data_dir or settings.data_dir
         self.processed_dir = ensure_dir(self.data_dir / "processed")
     
     def build_technical_features(self, data: pd.DataFrame) -> pd.DataFrame:
-        """Build technical analysis features."""
+        # add all the technical indicators like rsi, macd, bollinger bands etc
         df = data.copy()
         
-        # Price-based features
+        # basic price calculations
         df['returns'] = df['Close'].pct_change()
         df['log_returns'] = np.log(df['Close'] / df['Close'].shift(1))
         df['price_range'] = (df['High'] - df['Low']) / df['Close']

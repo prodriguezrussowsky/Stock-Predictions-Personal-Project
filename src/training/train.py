@@ -13,12 +13,14 @@ from ..ingestion.ingest_yf import YahooFinanceIngestion
 from ..features.build_features import FeatureBuilder
 from ..models.xgb import XGBoostModel, train_xgboost_model
 from ..models.baseline import get_baseline_model, evaluate_baseline_models
+from ..models.pytorch_models import LSTMModel, train_lstm_model
+from ..common.trading_signals import TradingSignalGenerator, format_trading_recommendation
 
 logger = setup_logging()
 
 
 class ModelTrainer:
-    """Main training orchestrator for stock prediction models."""
+    # handles the whole training process from data to trained model
     
     def __init__(self, output_dir: Optional[Path] = None):
         self.output_dir = output_dir or settings.models_dir
@@ -30,23 +32,23 @@ class ModelTrainer:
         self.training_results = {}
     
     def prepare_data(self, ticker: str, horizon: str, period: str = "2y") -> tuple[pd.DataFrame, pd.Series]:
-        """Prepare training data for a specific ticker and horizon."""
+        # get data from yahoo, engineer features, split into X and y
         logger.info(f"Preparing data for {ticker}, horizon: {horizon}")
         
-        # Validate inputs
+        # make sure the inputs make sense
         ticker = validate_ticker(ticker)
         if horizon not in ["1d", "5d", "20d"]:
             raise ValueError(f"Invalid horizon: {horizon}")
         
-        # Fetch data
+        # grab the stock data
         data = self.ingestor.fetch_stock_data(ticker, period=period)
         if data.empty:
             raise ValueError(f"No data available for {ticker}")
         
-        # Build features
+        # turn raw price data into features
         features = self.feature_builder.build_all_features(data, target_horizons=[horizon])
         
-        # Prepare training data
+        # split into features (X) and target (y)
         target_col = f"target_price_{horizon}"
         if target_col not in features.columns:
             raise ValueError(f"Target column {target_col} not found")
@@ -95,6 +97,12 @@ class ModelTrainer:
                 hyperparameter_tuning=hyperparameter_tuning,
                 **model_kwargs
             )
+        elif model_type == "lstm":
+            model = train_lstm_model(
+                X_train, y_train,
+                validation_split=0.2,
+                **model_kwargs
+            )
         elif model_type in ["naive", "sma", "ema", "linear_trend"]:
             model = get_baseline_model(model_type, **model_kwargs)
             model.fit(X_train, y_train)
@@ -111,6 +119,35 @@ class ModelTrainer:
         train_metrics = self.calculate_metrics(y_train, train_predictions)
         test_metrics = self.calculate_metrics(y_test, test_predictions)
         
+        # Generate trading signals for the most recent data
+        trading_signals = None
+        try:
+            # Get model confidence (simplified - could be enhanced based on model type)
+            if hasattr(model, 'predict_with_uncertainty'):
+                recent_X = X.tail(10)  # Use last 10 data points for prediction
+                uncertainty_predictions = model.predict_with_uncertainty(recent_X)
+                model_confidence = 1.0 - (uncertainty_predictions.get('std', [0.1])[-1] / uncertainty_predictions.get('prediction', [1.0])[-1])
+                model_confidence = max(0.0, min(1.0, model_confidence))  # Clamp between 0 and 1
+                predictions_dict = uncertainty_predictions
+            else:
+                # Use RMSE to estimate confidence
+                model_confidence = max(0.0, min(1.0, 1.0 - (test_metrics['rmse'] / y_test.mean())))
+                recent_predictions = model.predict(X.tail(1))
+                predictions_dict = {'prediction': recent_predictions}
+            
+            # Generate trading recommendation
+            signal_generator = TradingSignalGenerator()
+            trading_signals = signal_generator.generate_signals(
+                predictions=predictions_dict,
+                current_data=X,
+                model_confidence=model_confidence,
+                horizon=horizon
+            )
+            
+        except Exception as e:
+            logger.warning(f"Failed to generate trading signals: {e}")
+            trading_signals = None
+        
         # Prepare results
         results = {
             "ticker": ticker,
@@ -121,6 +158,7 @@ class ModelTrainer:
             "train_metrics": train_metrics,
             "test_metrics": test_metrics,
             "model_params": model.get_params() if hasattr(model, 'get_params') else {},
+            "trading_signals": trading_signals,
             "timestamp": datetime.now().isoformat()
         }
         
@@ -244,7 +282,7 @@ def main():
     parser.add_argument("--ticker", type=str, required=True, help="Stock ticker symbol")
     parser.add_argument("--horizon", type=str, choices=["1d", "5d", "20d"], 
                        help="Prediction horizon (if not specified, trains all)")
-    parser.add_argument("--model", type=str, choices=["xgb", "naive", "sma", "ema", "linear_trend"],
+    parser.add_argument("--model", type=str, choices=["xgb", "lstm", "naive", "sma", "ema", "linear_trend"],
                        default="xgb", help="Model type to train")
     parser.add_argument("--period", type=str, default="2y", help="Data period for training")
     parser.add_argument("--tune", action="store_true", help="Enable hyperparameter tuning")
@@ -255,6 +293,12 @@ def main():
     parser.add_argument("--n-estimators", type=int, default=100, help="Number of estimators")
     parser.add_argument("--max-depth", type=int, default=6, help="Maximum tree depth")
     parser.add_argument("--learning-rate", type=float, default=0.1, help="Learning rate")
+    
+    # LSTM specific parameters
+    parser.add_argument("--sequence-length", type=int, default=30, help="LSTM sequence length")
+    parser.add_argument("--hidden-size", type=int, default=50, help="LSTM hidden size")
+    parser.add_argument("--num-layers", type=int, default=2, help="Number of LSTM layers")
+    parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs")
     
     args = parser.parse_args()
     
@@ -269,6 +313,14 @@ def main():
             "n_estimators": args.n_estimators,
             "max_depth": args.max_depth,
             "eta": args.learning_rate
+        })
+    elif args.model == "lstm":
+        model_kwargs.update({
+            "sequence_length": args.sequence_length,
+            "hidden_size": args.hidden_size,
+            "num_layers": args.num_layers,
+            "epochs": args.epochs,
+            "learning_rate": args.learning_rate
         })
     
     try:
@@ -305,13 +357,24 @@ def main():
                     **model_kwargs
                 )
                 
-                print(f"\n=== Training Results: {args.ticker} ({horizon}) ===")
-                print(f"Model Type: {result['model_type']}")
-                print(f"Training Time: {result['training_time']:.2f}s")
-                print(f"Test RMSE: {result['test_metrics']['rmse']:.4f}")
-                print(f"Test MAE: {result['test_metrics']['mae']:.4f}")
-                print(f"Test MAPE: {result['test_metrics']['mape']:.2f}%")
-                print(f"Directional Accuracy: {result['test_metrics']['directional_accuracy']:.2f}%")
+                # Display trading signals if available
+                if result.get('trading_signals'):
+                    trading_output = format_trading_recommendation(
+                        result['trading_signals'], 
+                        args.ticker, 
+                        result['model_type'], 
+                        horizon
+                    )
+                    print(trading_output)
+                else:
+                    # Fallback to technical metrics
+                    print(f"\n=== Training Results: {args.ticker} ({horizon}) ===")
+                    print(f"Model Type: {result['model_type']}")
+                    print(f"Training Time: {result['training_time']:.2f}s")
+                    print(f"Test RMSE: {result['test_metrics']['rmse']:.4f}")
+                    print(f"Test MAE: {result['test_metrics']['mae']:.4f}")
+                    print(f"Test MAPE: {result['test_metrics']['mape']:.2f}%")
+                    print(f"Directional Accuracy: {result['test_metrics']['directional_accuracy']:.2f}%")
     
     except Exception as e:
         logger.error(f"Training failed: {e}")

@@ -12,6 +12,7 @@ logger = setup_logging()
 
 
 class YahooFinanceIngestion:
+    # grabs stock data from yahoo finance and cleans it up
     def __init__(self, data_dir: Optional[Path] = None):
         self.data_dir = data_dir or settings.data_dir
         self.raw_dir = ensure_dir(self.data_dir / "raw")

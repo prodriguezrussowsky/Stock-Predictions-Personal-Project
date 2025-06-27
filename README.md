@@ -1,67 +1,104 @@
-# Stock Predictor (Work in Progress)
+# Stock Prediction Trading System
 
-A local development stock prediction system that provides point forecasts and actionable trading signals. This project focuses on experimentation and model development in a local environment.
+turns raw stock data into actionable trading recommendations. basically takes yahoo finance data, runs it through some ml models, and tells you whether to buy, sell, or hold with actual entry/exit points and position sizing.
 
-## Quick Start (Local Development)
+## quick start
 
-1. **Setup Environment**
+1. **install stuff**
    ```bash
    pip install -r requirements.txt
-   cp .env.example .env
-   # Edit .env with your configuration
    ```
 
-2. **Data Ingestion** (Basic implementation)
+2. **train a model and get trading signals**
    ```bash
-   python -m src.ingestion.ingest_yf --ticker AAPL --days 365
+   # simple moving average model
+   python -m src.training.train --ticker AAPL --model sma --horizon 5d
+   
+   # xgboost model  
+   python -m src.training.train --ticker AAPL --model xgb --horizon 5d
+   
+   # lstm neural network
+   python -m src.training.train --ticker AAPL --model lstm --horizon 5d --epochs 50
    ```
 
-3. **Feature Engineering** (Basic implementation)
+3. **compare multiple models**
    ```bash
-   python -m src.features.build_features --input data/raw/AAPL.parquet
+   python -m src.training.train --ticker AAPL --compare
    ```
 
-4. **Train a Model** (Basic implementation)
-   ```bash
-   python -m src.training.train --horizon 5d --model baseline --ticker AAPL
-   ```
+## example output
 
-## Architecture (Local Focus)
+here's what you get when you run a model:
 
-- **Data Ingestion**: Yahoo Finance via yfinance (local storage)
-- **Feature Engineering**: Technical indicators using ta-lib and pandas
-- **Models**: 
-  - **PyTorch**: LSTM, Temporal Fusion Transformer (TFT)
-  - **Scikit-learn/XGBoost**: Traditional ML models
-  - **Prophet**: Time series forecasting
-  - **Baseline**: Simple moving averages
-- **Storage**: Local parquet files and pickle models
-- **Evaluation**: Backtesting with local results
+```
+=== TRADING SIGNALS: AAPL (5d horizon) ===
+MODEL: SMA | CONFIDENCE: 88%
 
-## Development Status
+PREDICTION ANALYSIS:
+Current Price: $201.00
+Target Price:  $230.43 (+14.6%)
+Confidence Band: $196.98 - $205.02
 
-This is a **work in progress** focused on local development and experimentation:
+TRADING RECOMMENDATION:
+Signal: STRONG_BUY
+Entry: $201.20
+Target: $230.43 (+14.6% gain)
+Stop Loss: $194.97 (-3.0%)
+Position Size: 22.7% of portfolio (low risk)
+Risk/Reward: 1:4.9
 
-- ✅ Basic project structure
-- ✅ Requirements and dependencies (including PyTorch)
-- 🚧 Data ingestion (minimal implementation)
-- 🚧 Feature engineering (basic framework)
-- 🚧 Model training (baseline only)
-- ❌ Model evaluation/backtesting
-- ❌ API serving layer
-- ❌ Advanced PyTorch models (LSTM, TFT)
+- RSI: 50 (Neutral)
+- MACD: Bearish crossover
+- Volatility: 1.4% (low)
+- Volume: High (1.7x avg)
 
-## Local Development
+RISK ASSESSMENT:
+- Market Risk: LOW
+- Expected Holding Period: 5 days
+- Key Risks: Large expected move - higher probability of model error
+
+RATIONALE:
+Model predicts strong upward movement (14.6%) with high confidence (88%). 
+Technical indicators are neutral. MACD shows bearish trend.
+```
+
+## how it works
+
+- **data**: pulls from yahoo finance, handles missing data and errors
+- **features**: 91 technical indicators (rsi, macd, bollinger bands, etc.) + time features + lag features
+- **models**: 
+  - baseline models (sma, ema, linear trend)
+  - xgboost with hyperparameter tuning
+  - pytorch lstm with uncertainty quantification
+- **signals**: converts predictions into actual trading advice with risk assessment and position sizing
+
+## current status
+
+what works:
+- data ingestion from yahoo finance
+- feature engineering (91 indicators)
+-  multiple ml models (baseline, xgboost, lstm)
+- trading signal generation with risk assessment
+- uncertainty quantification
+- position sizing and stop-loss calculations
+
+haven't done yet:
+- backtesting framework 
+- live trading integration
+- web interface
+- model deployment/serving
+
+## dev stuff
 
 ```bash
-# Run tests
-pytest tests/
-
-# Lint code  
+# run linting
 flake8 src/
 
-# Install in development mode
+# check types  
+mypy src/
+
+# install in dev mode
 pip install -e .
 ```
 
-**Note**: This project is currently focused on local development only. No deployment, containerization, or production infrastructure is implemented.
+this is built for local experimentation and research, not production trading (yet). use at your own risk, don't bet the farm on it.
